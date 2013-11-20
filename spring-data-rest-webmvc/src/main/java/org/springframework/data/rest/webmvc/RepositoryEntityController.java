@@ -270,11 +270,15 @@ class RepositoryEntityController extends AbstractRepositoryRestController implem
 
 		Object domainObj = invoker.invokeFindOne(id);
 
-		publisher.publishEvent(new BeforeDeleteEvent(domainObj));
-		invoker.invokeDelete(id);
-		publisher.publishEvent(new AfterDeleteEvent(domainObj));
+        if(domainObj != null) {
+            publisher.publishEvent(new BeforeDeleteEvent(domainObj));
+            invoker.invokeDelete(id);
+            publisher.publishEvent(new AfterDeleteEvent(domainObj));
 
-		return new ResponseEntity<Object>(HttpStatus.NO_CONTENT);
+            return new ResponseEntity<Object>(HttpStatus.NO_CONTENT);
+        }
+
+		return new ResponseEntity<Object>(HttpStatus.NOT_FOUND);
 	}
 
 }
