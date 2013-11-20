@@ -3,6 +3,7 @@ package org.springframework.data.rest.webmvc.json;
 import static org.springframework.beans.BeanUtils.*;
 
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -241,6 +242,16 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
 			super((Class) PersistentEntityResource.class);
 		}
 
+        public Boolean isDenormalized(PersistentProperty property) {
+            Annotation[] annotations = property.getField().getDeclaredAnnotations();
+            for (Annotation annot : annotations)
+                if (annot.annotationType() == Denormalized.class) {
+                    return true;
+                }
+
+            return false;
+        }
+
 		/*
 		 * (non-Javadoc)
 		 * @see com.fasterxml.jackson.databind.ser.std.StdSerializer#serialize(java.lang.Object, com.fasterxml.jackson.core.JsonGenerator, com.fasterxml.jackson.databind.SerializerProvider)
@@ -306,12 +317,13 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
 					public void doWithAssociation(Association<? extends PersistentProperty<?>> association) {
 
 						PersistentProperty<?> property = association.getInverse();
+                        Boolean denormalized = isDenormalized(property);
 
 						if (!mappings.isMapped(property)) {
 							return;
 						}
 
-						if (maybeAddAssociationLink(builder, mappings, property, links)) {
+						if (maybeAddAssociationLink(builder, mappings, property, links) && !denormalized) {
 							return;
 						}
 						// Association Link was not added, probably because this isn't a managed type. Add value of property inline.
