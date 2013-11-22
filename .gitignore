@@ -8,3 +8,5 @@ build/
 .settings
 *.log
 vf.gf.*
+target/
+deploy.bat
