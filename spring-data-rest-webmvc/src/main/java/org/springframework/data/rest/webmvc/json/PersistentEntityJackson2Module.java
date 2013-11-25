@@ -278,9 +278,17 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
                         boolean idAvailableAndShallNotBeExposed = property.isIdProperty()
                                 && !config.isIdExposedFor(entity.getType());
 
+                        if (property.getName().equals("links")) {
+                            return;
+                        }
+
                         if (idAvailableAndShallNotBeExposed) {
                             return;
                         }
+
+//                        if (property.isEntity() && maybeAddAssociationLink(builder, mappings, property, links)) {
+//                            return;
+//                        }
 
                         // Property is a normal or non-managed property.
                         Object propertyValue = wrapper.getProperty(property);
@@ -329,12 +337,6 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
                     }
                     jgen.writeEndArray();
                 }
-
-                for (Link l : links) {
-                    jgen.writeObject(l);
-                }
-
-                jgen.writeEndArray();
 
             } catch (IllegalStateException e) {
                 throw (IOException) e.getCause();
