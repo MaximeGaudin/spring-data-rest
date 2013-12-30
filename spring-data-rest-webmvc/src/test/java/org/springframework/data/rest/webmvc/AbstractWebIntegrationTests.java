@@ -17,10 +17,16 @@ package org.springframework.data.rest.webmvc;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
+import static org.junit.Assume.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import net.minidev.json.JSONArray;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -29,7 +35,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.rest.webmvc.config.RepositoryRestMvcConfiguration;
 import org.springframework.hateoas.Link;
 import org.springframework.hateoas.LinkDiscoverer;
-import org.springframework.hateoas.core.DefaultLinkDiscoverer;
+import org.springframework.hateoas.LinkDiscoverers;
+import org.springframework.hateoas.MediaTypes;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
@@ -39,7 +46,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.context.WebApplicationContext;
 
 import com.jayway.jsonpath.JsonPath;
@@ -52,20 +62,24 @@ import com.jayway.jsonpath.JsonPath;
 @ContextConfiguration(classes = RepositoryRestMvcConfiguration.class)
 public abstract class AbstractWebIntegrationTests {
 
+	protected static MediaType DEFAULT_MEDIA_TYPE = org.springframework.hateoas.MediaTypes.HAL_JSON;
+
 	@Autowired WebApplicationContext context;
+	@Autowired LinkDiscoverers discoverers;
 
 	protected MockMvc mvc;
-	LinkDiscoverer links = new DefaultLinkDiscoverer();
 
 	@Before
 	public void setUp() {
-		mvc = MockMvcBuilders.webAppContextSetup(context).build();
+
+		mvc = MockMvcBuilders.webAppContextSetup(context).//
+				defaultRequest(get("/").accept(DEFAULT_MEDIA_TYPE)).build();
 	}
 
 	protected MockHttpServletResponse request(String href, MediaType contentType) throws Exception {
 		return mvc.perform(get(href).accept(contentType)). //
 				andExpect(status().isOk()). //
-				andExpect(content().contentType(MediaType.APPLICATION_JSON)). //
+				andExpect(content().contentType(contentType)). //
 				andReturn().getResponse();
 	}
 
@@ -74,11 +88,15 @@ public abstract class AbstractWebIntegrationTests {
 	}
 
 	protected MockHttpServletResponse request(String href) throws Exception {
-		return request(href, MediaType.APPLICATION_JSON);
+		return request(href, DEFAULT_MEDIA_TYPE);
 	}
 
 	protected ResultActions follow(Link link) throws Exception {
-		return mvc.perform(get(link.getHref()));
+		return follow(link.getHref());
+	}
+
+	protected ResultActions follow(String href) throws Exception {
+		return mvc.perform(get(href));
 	}
 
 	protected List<Link> discover(String rel) throws Exception {
@@ -93,21 +111,30 @@ public abstract class AbstractWebIntegrationTests {
 	}
 
 	protected List<Link> discover(Link root, String rel) throws Exception {
-		String s = mvc.perform(get(root.getHref())).andExpect(status().isOk()).andExpect(hasLinkWithRel(rel)).andReturn()
-				.getResponse().getContentAsString();
-		return links.findLinksWithRel(rel, s);
+
+		MockHttpServletResponse response = mvc.perform(get(root.getHref()).accept(DEFAULT_MEDIA_TYPE)).//
+				andExpect(status().isOk()).//
+				andExpect(hasLinkWithRel(rel)).//
+				andReturn().getResponse();
+
+		String s = response.getContentAsString();
+		return getDiscoverer(response).findLinksWithRel(rel, s);
 	}
 
 	protected Link discoverUnique(Link root, String rel) throws Exception {
-		String s = mvc.perform(get(root.getHref())).andExpect(status().isOk()).andExpect(hasLinkWithRel(rel)).andReturn()
-				.getResponse().getContentAsString();
-		return links.findLinkWithRel(rel, s);
+
+		MockHttpServletResponse response = mvc.perform(get(root.getHref()).accept(DEFAULT_MEDIA_TYPE)).//
+				andExpect(status().isOk()).//
+				andExpect(hasLinkWithRel(rel)).//
+				andReturn().getResponse();
+
+		return assertHasLinkWithRel(rel, response);
 	}
 
 	protected Link assertHasLinkWithRel(String rel, MockHttpServletResponse response) throws Exception {
 
 		String content = response.getContentAsString();
-		Link link = links.findLinkWithRel(rel, content);
+		Link link = getDiscoverer(response).findLinkWithRel(rel, content);
 
 		assertThat("Expected to find link with rel " + rel + " but found none in " + content + "!", link,
 				is(notNullValue()));
@@ -117,8 +144,8 @@ public abstract class AbstractWebIntegrationTests {
 
 	protected Link assertHasContentLinkWithRel(String rel, MockHttpServletResponse response) throws Exception {
 
-		String href = JsonPath
-				.read(response.getContentAsString(), String.format("$..links[?(@.rel == '%s')].href[0]", rel)).toString();
+		String content = response.getContentAsString();
+		String href = JsonPath.read(content, String.format("$.._links.%s.href[0]", rel)).toString();
 		assertThat("Expected to find a link with rel" + rel + " in the content section of the response!", href,
 				is(notNullValue()));
 
@@ -128,19 +155,43 @@ public abstract class AbstractWebIntegrationTests {
 	protected void assertDoesNotHaveLinkWithRel(String rel, MockHttpServletResponse response) throws Exception {
 
 		String content = response.getContentAsString();
-		Link link = links.findLinkWithRel(rel, content);
+		Link link = getDiscoverer(response).findLinkWithRel(rel, content);
 
 		assertThat("Expected not to find link with rel " + rel + " but found " + link + "!", link, is(nullValue()));
+	}
+
+	private LinkDiscoverer getDiscoverer(MockHttpServletResponse response) {
+
+		String contentType = response.getContentType();
+		LinkDiscoverer linkDiscovererFor = discoverers.getLinkDiscovererFor(contentType);
+
+		assertThat("Did not find a LinkDiscoverer for returned media type " + contentType + "!", linkDiscovererFor,
+				is(notNullValue()));
+
+		return linkDiscovererFor;
+	}
+
+	@SuppressWarnings("unchecked")
+	protected <T> T assertHasJsonPathValue(String path, MockHttpServletResponse response) throws Exception {
+
+		Object jsonPathResult = JsonPath.read(response.getContentAsString(), path);
+		assertThat(jsonPathResult, is(notNullValue()));
+
+		return (T) jsonPathResult;
 	}
 
 	protected ResultMatcher hasLinkWithRel(final String rel) {
 
 		return new ResultMatcher() {
+
 			@Override
 			public void match(MvcResult result) throws Exception {
-				String s = result.getResponse().getContentAsString();
-				assertThat("Expected to find link with rel " + rel + " but found none in " + s, links.findLinkWithRel(rel, s),
-						notNullValue());
+
+				MockHttpServletResponse response = result.getResponse();
+				String s = response.getContentAsString();
+
+				assertThat("Expected to find link with rel " + rel + " but found none in " + s, //
+						getDiscoverer(response).findLinkWithRel(rel, s), notNullValue());
 			}
 		};
 	}
@@ -151,17 +202,22 @@ public abstract class AbstractWebIntegrationTests {
 
 			@Override
 			public void match(MvcResult result) throws Exception {
-				String s = result.getResponse().getContentAsString();
-				assertThat("Expected not to find link with rel " + rel + " but found one in " + s,
-						links.findLinkWithRel(rel, s), nullValue());
+
+				MockHttpServletResponse response = result.getResponse();
+				String s = response.getContentAsString();
+
+				assertThat("Expected not to find link with rel " + rel + " but found one in " + s, //
+						getDiscoverer(response).findLinkWithRel(rel, s), nullValue());
 			}
 		};
 	}
 
+	// Root test cases
+
 	@Test
 	public void exposesRootResource() throws Exception {
 
-		ResultActions actions = mvc.perform(get("/")).andExpect(status().isOk());
+		ResultActions actions = mvc.perform(get("/").accept(DEFAULT_MEDIA_TYPE)).andExpect(status().isOk());
 
 		for (String rel : expectedRootLinkRels()) {
 			actions.andExpect(hasLinkWithRel(rel));
@@ -190,5 +246,109 @@ public abstract class AbstractWebIntegrationTests {
 		}
 	}
 
+	/**
+	 * @see DATAREST-203
+	 */
+	@Test
+	public void servesHalWhenRequested() throws Exception {
+
+		mvc.perform(get("/")). //
+				andExpect(content().contentType(MediaTypes.HAL_JSON)). //
+				andExpect(jsonPath("$._links", notNullValue()));
+	}
+
+	/**
+	 * @see DATAREST-203
+	 */
+	@Test
+	public void servesHalWhenJsonIsRequested() throws Exception {
+
+		mvc.perform(get("/").accept(MediaType.APPLICATION_JSON)). //
+				andExpect(content().contentType(MediaType.APPLICATION_JSON)). //
+				andExpect(jsonPath("$._links", notNullValue()));
+	}
+
+	/**
+	 * @see DATAREST-203
+	 */
+	@Test
+	public void exposesSearchesForRootResources() throws Exception {
+
+		MockHttpServletResponse response = request("/");
+
+		for (String rel : expectedRootLinkRels()) {
+
+			Link link = assertHasLinkWithRel(rel, response);
+			String rootResourceRepresentation = request(link).getContentAsString();
+			Link searchLink = getDiscoverer(response).findLinkWithRel("search", rootResourceRepresentation);
+
+			if (searchLink != null) {
+				request(searchLink);
+			}
+		}
+	}
+
+	@Test
+	public void postsPayloadToResource() throws Exception {
+
+		Map<String, String> payloads = getPayloadToPost();
+		assumeFalse(payloads.isEmpty());
+
+		MockHttpServletResponse response = request("/");
+
+		for (String rel : expectedRootLinkRels()) {
+
+			String payload = payloads.get(rel);
+
+			if (payload != null) {
+				Link link = assertHasLinkWithRel(rel, response);
+
+				MockHttpServletRequestBuilder request = post(link.getHref()).//
+						content(payload).//
+						contentType(MediaType.APPLICATION_JSON);
+
+				mvc.perform(request). //
+						andExpect(status().isCreated());
+			}
+		}
+	}
+
+	/**
+	 * @see DATAREST-198
+	 */
+	@Test
+	public void accessLinkedResources() throws Exception {
+
+		MockHttpServletResponse rootResource = request("/");
+
+		for (Entry<String, List<String>> linked : getRootAndLinkedResources().entrySet()) {
+
+			Link resourceLink = assertHasLinkWithRel(linked.getKey(), rootResource);
+			MockHttpServletResponse resource = request(resourceLink);
+
+			for (String linkedRel : linked.getValue()) {
+
+				// Find URIs pointing to linked resources
+				String jsonPath = String.format("$..%s._links.%s.href", linked.getKey(), linkedRel);
+				String representation = resource.getContentAsString();
+				JSONArray uris = JsonPath.read(representation, jsonPath);
+
+				for (Object href : uris) {
+
+					follow(href.toString()). //
+							andExpect(status().isOk());
+				}
+			}
+		}
+	}
+
 	protected abstract Iterable<String> expectedRootLinkRels();
+
+	protected Map<String, String> getPayloadToPost() throws Exception {
+		return Collections.emptyMap();
+	}
+
+	protected MultiValueMap<String, String> getRootAndLinkedResources() {
+		return new LinkedMultiValueMap<String, String>(0);
+	}
 }

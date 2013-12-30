@@ -9,8 +9,8 @@ ext {
   logbackVersion = "1.0.11"
 
   // Spring
-  springVersion = "3.2.5.RELEASE"
-  hateoasVersion = "0.8.0.RELEASE"
+  springVersion = "3.2.6.RELEASE"
+  hateoasVersion = "0.9.0.BUILD-SNAPSHOT"
   springPluginVersion = "0.8.0.RELEASE"
   springSecurityVersion = "3.1.3.RELEASE"
   sdCommonsVersion = "1.7.0.M1"
@@ -20,7 +20,7 @@ ext {
   sdNeo4jVersion = "3.0.0.M1"
 
   // Libraries
-  jacksonVersion = "2.2.2"
+  jacksonVersion = "2.3.0"
   jodaVersion = "2.1"
   hibernateVersion = "4.2.0.Final"
   hibernateValidatorVersion = "4.3.1.Final"
@@ -79,7 +79,7 @@ configure(allprojects) {
   sourceSets.test.resources.srcDirs = ["src/test/resources", "src/test/java"]
 
   repositories {
-    maven { url "http://repo.springsource.org/libs-milestone" }
+    maven { url "http://repo.springsource.org/libs-snapshot" }
   }
 
   dependencies {
@@ -194,7 +194,7 @@ project("spring-data-rest-webmvc") {
 
     // Jackson
     compile "com.fasterxml.jackson.datatype:jackson-datatype-joda:$jacksonVersion"
-    compile "com.fasterxml.jackson.datatype:jackson-datatype-hibernate4:$jacksonVersion"
+    compile("com.fasterxml.jackson.datatype:jackson-datatype-hibernate4:$jacksonVersion", optional)
 
     // Testing
     testCompile "org.eclipse.jetty:jetty-servlet:$jettyVersion"
@@ -213,6 +213,7 @@ project("spring-data-rest-webmvc") {
     testCompile "joda-time:joda-time:$jodaVersion"
     
     // Hibernate
+    compile("org.hibernate:hibernate-core:$hibernateVersion", optional)
     testRuntime "org.hibernate:hibernate-entitymanager:$hibernateVersion"
     testRuntime "org.hibernate:hibernate-validator:$hibernateValidatorVersion"
     // HSQL
@@ -266,7 +267,7 @@ project("spring-data-rest-example") {
 
     // Jackson
     compile "com.fasterxml.jackson.datatype:jackson-datatype-joda:$jacksonVersion"
-    compile "com.fasterxml.jackson.datatype:jackson-datatype-hibernate4:$jacksonVersion"
+    compile("com.fasterxml.jackson.datatype:jackson-datatype-hibernate4:$jacksonVersion", optional)
 
     // Hibernate
     runtime "org.hibernate:hibernate-entitymanager:$hibernateVersion"
@@ -361,16 +362,5 @@ configure(rootProject) {
 
 task wrapper(type: Wrapper) {
   description = "Generates gradlew[.bat] scripts"
-  gradleVersion = "1.8"
-
-  doLast() {
-    def gradleOpts = "-XX:MaxPermSize=1024m -Xmx1024m"
-    def gradleBatOpts = "$gradleOpts -XX:MaxHeapSize=256m"
-    File wrapperFile = file("gradlew")
-    wrapperFile.text = wrapperFile.text.replace("DEFAULT_JVM_OPTS=",
-                                                "GRADLE_OPTS=\"$gradleOpts \$GRADLE_OPTS\"\nDEFAULT_JVM_OPTS=")
-    File wrapperBatFile = file("gradlew.bat")
-    wrapperBatFile.text = wrapperBatFile.text.replace("set DEFAULT_JVM_OPTS=",
-                                                      "set GRADLE_OPTS=$gradleBatOpts %GRADLE_OPTS%\nset DEFAULT_JVM_OPTS=")
-  }
+  gradleVersion = "1.10"
 }

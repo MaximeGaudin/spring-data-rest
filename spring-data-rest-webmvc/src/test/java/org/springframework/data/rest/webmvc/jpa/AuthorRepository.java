@@ -13,17 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.data.rest.webmvc.mongodb;
-
-import java.math.BigInteger;
-import java.util.List;
+package org.springframework.data.rest.webmvc.jpa;
 
 import org.springframework.data.repository.CrudRepository;
 
 /**
  * @author Oliver Gierke
  */
-public interface UserRepository extends CrudRepository<User, BigInteger> {
+public interface AuthorRepository extends CrudRepository<Author, Long> {
 
-	List<User> findByFirstname(String firstname);
 }

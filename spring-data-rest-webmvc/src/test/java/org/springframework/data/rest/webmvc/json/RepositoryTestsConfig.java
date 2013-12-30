@@ -16,6 +16,9 @@ import org.springframework.data.rest.webmvc.jpa.JpaRepositoryConfig;
 import org.springframework.data.rest.webmvc.jpa.Person;
 import org.springframework.data.rest.webmvc.jpa.PersonRepository;
 import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.hateoas.RelProvider;
+import org.springframework.hateoas.core.EvoInflectorRelProvider;
+import org.springframework.hateoas.hal.Jackson2HalModule;
 
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -71,13 +74,20 @@ public class RepositoryTestsConfig {
 
 	@Bean
 	public Module persistentEntityModule() {
-		return new PersistentEntityJackson2Module(new ResourceMappings(config(), repositories()));
+		return new PersistentEntityJackson2Module(new ResourceMappings(config(), repositories()),
+				defaultConversionService());
 	}
 
 	@Bean
 	public ObjectMapper objectMapper() {
+
+		RelProvider relProvider = new EvoInflectorRelProvider();
 		ObjectMapper mapper = new ObjectMapper();
+
+		mapper.registerModule(new Jackson2HalModule());
 		mapper.registerModule(persistentEntityModule());
+		mapper.setHandlerInstantiator(new Jackson2HalModule.HalHandlerInstantiator(relProvider, null));
+
 		return mapper;
 	}
 }

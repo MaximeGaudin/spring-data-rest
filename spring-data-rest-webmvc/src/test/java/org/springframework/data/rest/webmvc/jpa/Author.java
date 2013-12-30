@@ -18,53 +18,24 @@ package org.springframework.data.rest.webmvc.jpa;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.persistence.CascadeType;
 import javax.persistence.Entity;
-import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
+import javax.persistence.ManyToMany;
 
-/**
- * @author Oliver Gierke
- */
 @Entity
-@Table(name = "ORDERS")
-public class Order {
+public class Author {
 
 	@Id @GeneratedValue//
-	private Long id;
-	@ManyToOne(fetch = FetchType.LAZY)//
-	private Person creator;
-	@OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)//
-	private Set<LineItem> lineItems = new HashSet<LineItem>();
+	Long id;
+	String name;
 
-	public Order(Person creator) {
-		this.creator = creator;
-	}
+	@ManyToMany(mappedBy = "authors")//
+	Set<Book> books = new HashSet<Book>();
 
-	protected Order() {
+	protected Author() {}
 
-	}
-
-	public Long getId() {
-		return id;
-	}
-
-	public Person getCreator() {
-		return creator;
-	}
-
-	/**
-	 * @return the lineItems
-	 */
-	public Set<LineItem> getLineItems() {
-		return lineItems;
-	}
-
-	public void add(LineItem item) {
-		this.lineItems.add(item);
+	public Author(String name) {
+		this.name = name;
 	}
 }

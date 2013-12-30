@@ -15,6 +15,9 @@
  */
 package org.springframework.data.rest.webmvc.config;
 
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -22,10 +25,17 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.AbstractApplicationContext;
+import org.springframework.data.rest.webmvc.RepositoryLinksResource;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.springframework.hateoas.LinkDiscoverers;
 import org.springframework.hateoas.core.DefaultRelProvider;
+import org.springframework.http.converter.HttpMessageConverter;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
+ * Integration tests for basic application bootstrapping (general configuration related checks).
+ * 
  * @author Oliver Gierke
  */
 public class RepositoryRestMvConfigurationIntegrationTests {
@@ -44,9 +54,25 @@ public class RepositoryRestMvConfigurationIntegrationTests {
 		}
 	}
 
+	/**
+	 * @see DATAREST-210
+	 */
 	@Test
-	public void foo() {
+	public void assertEnableHypermediaSupportWorkingCorrectly() {
+
+		assertThat(context.getBean("entityLinksPluginRegistry"), is(notNullValue()));
+		assertThat(context.getBean(LinkDiscoverers.class), is(notNullValue()));
+	}
+
+	@Test
+	public void assertBeansBeingSetUp() throws Exception {
+
 		context.getBean(PageableHandlerMethodArgumentResolver.class);
+
+		// Verify HAL setup
+		context.getBean("halJacksonHttpMessageConverter", HttpMessageConverter.class);
+		ObjectMapper mapper = context.getBean("halObjectMapper", ObjectMapper.class);
+		mapper.writeValueAsString(new RepositoryLinksResource());
 	}
 
 	@Configuration

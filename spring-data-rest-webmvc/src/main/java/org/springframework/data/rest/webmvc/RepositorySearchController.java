@@ -19,7 +19,6 @@ import static org.springframework.data.rest.webmvc.ControllerUtils.*;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -90,9 +89,8 @@ class RepositorySearchController extends AbstractRepositoryRestController {
 	 * @return
 	 */
 	@ResponseBody
-	@RequestMapping(value = BASE_MAPPING, method = RequestMethod.GET, //
-			produces = { "application/json", "application/x-spring-data-compact+json" })
-	public Resource<?> listSearches(RepositoryRestRequest request) {
+	@RequestMapping(value = BASE_MAPPING, method = RequestMethod.GET)
+	public ResourceSupport listSearches(RepositoryRestRequest request) {
 
 		SearchResourceMappings resourceMappings = request.getSearchMappings();
 
@@ -106,7 +104,10 @@ class RepositorySearchController extends AbstractRepositoryRestController {
 			throw new ResourceNotFoundException();
 		}
 
-		return new Resource<Object>(Collections.emptyList(), queryMethodLinks);
+		ResourceSupport result = new ResourceSupport();
+		result.add(queryMethodLinks);
+
+		return result;
 	}
 
 	/**
@@ -120,8 +121,7 @@ class RepositorySearchController extends AbstractRepositoryRestController {
 	 * @throws ResourceNotFoundException
 	 */
 	@ResponseBody
-	@RequestMapping(value = BASE_MAPPING + "/{search}", method = RequestMethod.GET, //
-			produces = { "application/json", "application/x-spring-data-verbose+json" })
+	@RequestMapping(value = BASE_MAPPING + "/{search}", method = RequestMethod.GET)
 	public ResponseEntity<Resources<?>> executeSearch(RepositoryRestRequest request, @PathVariable String search,
 			Pageable pageable) {
 

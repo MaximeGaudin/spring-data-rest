@@ -20,17 +20,27 @@ import static org.junit.Assert.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.rest.core.mapping.ResourceMappings;
 import org.springframework.data.rest.webmvc.AbstractWebIntegrationTests;
 import org.springframework.hateoas.Link;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
 
 /**
  * Web integration tests specific to JPA.
@@ -40,6 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 @ContextConfiguration(classes = JpaRepositoryConfig.class)
 public class JpaWebTests extends AbstractWebIntegrationTests {
+
+	static final String LINK_TO_SIBLINGS_OF = "$._embedded..[?(@.firstName == '%s')]._links.siblings.href[0]";
 
 	@Autowired TestDataPopulator loader;
 	@Autowired ResourceMappings mappings;
@@ -61,7 +73,30 @@ public class JpaWebTests extends AbstractWebIntegrationTests {
 	 */
 	@Override
 	protected Iterable<String> expectedRootLinkRels() {
-		return Arrays.asList("people");
+		return Arrays.asList("people", "authors", "books");
+	}
+
+	/* 
+	 * (non-Javadoc)
+	 * @see org.springframework.data.rest.webmvc.AbstractWebIntegrationTests#getPayloadToPost()
+	 */
+	@Override
+	protected Map<String, String> getPayloadToPost() throws Exception {
+		return Collections.singletonMap("people", readFile("person.json"));
+	}
+
+	/* 
+	 * (non-Javadoc)
+	 * @see org.springframework.data.rest.webmvc.AbstractWebIntegrationTests#getRootAndLinkedResources()
+	 */
+	@Override
+	protected MultiValueMap<String, String> getRootAndLinkedResources() {
+
+		MultiValueMap<String, String> map = new LinkedMultiValueMap<String, String>();
+		map.add("authors", "books");
+		map.add("books", "authors");
+
+		return map;
 	}
 
 	/**
@@ -104,6 +139,57 @@ public class JpaWebTests extends AbstractWebIntegrationTests {
 		MockHttpServletResponse orders = request(ordersLink);
 
 		Link creatorLink = assertHasContentLinkWithRel("creator", orders);
+
 		assertThat(request(creatorLink), is(notNullValue()));
+	}
+
+	/**
+	 * @see DATAREST-200
+	 */
+	@Test
+	public void exposesInlinedEntities() throws Exception {
+
+		MockHttpServletResponse response = request("/");
+		Link ordersLink = assertHasLinkWithRel("orders", response);
+
+		MockHttpServletResponse orders = request(ordersLink);
+		assertHasJsonPathValue("$..lineItems", orders);
+	}
+
+	/**
+	 * @see DATAREST-199
+	 */
+	@Test
+	public void createsOrderUsingPut() throws Exception {
+
+		mvc.perform(//
+				put("/orders/{id}", 4711).//
+						content(readFile("order.json")).contentType(MediaType.APPLICATION_JSON)//
+		).andExpect(status().isCreated());
+	}
+
+	@Test
+	public void listsSiblingsWithContentCorrectly() throws Exception {
+
+		MockHttpServletResponse response = mvc.perform(get("/people")).andReturn().getResponse();
+		String href = assertHasJsonPathValue(String.format(LINK_TO_SIBLINGS_OF, "John"), response);
+
+		mvc.perform(get(href)).andExpect(status().isOk());
+	}
+
+	@Test
+	public void listsEmptySiblingsCorrectly() throws Exception {
+
+		MockHttpServletResponse response = mvc.perform(get("/people")).andReturn().getResponse();
+		String href = assertHasJsonPathValue(String.format(LINK_TO_SIBLINGS_OF, "Billy Bob"), response);
+
+		mvc.perform(get(href)).andExpect(status().isOk());
+	}
+
+	private String readFile(String name) throws Exception {
+
+		ClassPathResource file = new ClassPathResource(name, getClass());
+		List<String> lines = Files.readAllLines(file.getFile().toPath(), Charset.forName("UTF-8"));
+		return StringUtils.collectionToDelimitedString(lines, System.lineSeparator());
 	}
 }
