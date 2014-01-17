@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2013-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@ package org.springframework.data.rest.core.mapping;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.hamcrest.Matchers;
 import org.junit.Before;
@@ -40,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Integration tests for {@link ResourceMappings}.
  * 
  * @author Oliver Gierke
+ * @author Greg Trunquist
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(classes = JpaRepositoryConfig.class)
@@ -112,5 +116,27 @@ public class ResourceMappingsIntegrationTest {
 		assertThat(creditCardMapping.getPath(), is(new Path("creditCards")));
 		assertThat(creditCardMapping.isExported(), is(false));
 		assertThat(mappings.exportsTopLevelResourceFor("creditCards"), is(false));
+	}
+
+	/**
+	 * @see DATAREST-107
+	 */
+	@Test
+	public void skipsSearchMethodsNotExported() {
+
+		ResourceMetadata creditCardMetadata = mappings.getMappingFor(CreditCard.class);
+		SearchResourceMappings searchResourceMappings = creditCardMetadata.getSearchResourceMappings();
+
+		assertThat(searchResourceMappings, is(Matchers.<MethodResourceMapping> iterableWithSize(0)));
+
+		ResourceMetadata personMetadata = mappings.getMappingFor(Person.class);
+		List<String> methodNames = new ArrayList<String>();
+
+		for (MethodResourceMapping method : personMetadata.getSearchResourceMappings()) {
+			methodNames.add(method.getMethod().getName());
+		}
+
+		assertThat(methodNames, hasSize(3));
+		assertThat(methodNames, hasItems("findByFirstName", "findByCreatedGreaterThan", "findByCreatedUsingISO8601Date"));
 	}
 }
