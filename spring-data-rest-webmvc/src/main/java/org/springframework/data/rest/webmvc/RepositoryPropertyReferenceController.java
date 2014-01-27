@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 the original author or authors.
+ * Copyright 2012-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import static org.springframework.hateoas.mvc.ControllerLinkBuilder.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -28,6 +29,7 @@ import java.util.Map.Entry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
+import org.springframework.core.CollectionFactory;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.data.mapping.PersistentEntity;
 import org.springframework.data.mapping.PersistentProperty;
@@ -58,10 +60,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * @author Jon Brisbin
  * @author Oliver Gierke
+ * @author Greg Turnquist
  */
 @RepositoryRestController
 @SuppressWarnings({ "unchecked" })
@@ -141,7 +145,7 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 		};
 
 		ResourceSupport responseResource = doWithReferencedProperty(repoRequest, id, property, handler);
-		return ControllerUtils.toResponseEntity(headers, responseResource, HttpStatus.OK);
+		return ControllerUtils.toResponseEntity(HttpStatus.OK, headers, responseResource);
 	}
 
 	@RequestMapping(value = BASE_MAPPING, method = RequestMethod.DELETE)
@@ -188,7 +192,7 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 			}
 		}
 
-		return ControllerUtils.toResponseEntity(null, EMPTY_RESOURCE, HttpStatus.NO_CONTENT);
+		return ControllerUtils.toEmptyResponse(HttpStatus.NO_CONTENT);
 	}
 
 	@RequestMapping(value = BASE_MAPPING + "/{propertyId}", method = RequestMethod.GET, produces = { "application/json",
@@ -240,7 +244,7 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 		};
 
 		ResourceSupport responseResource = doWithReferencedProperty(repoRequest, id, property, handler);
-		return ControllerUtils.toResponseEntity(headers, responseResource, HttpStatus.OK);
+		return ControllerUtils.toResponseEntity(HttpStatus.OK, headers, responseResource);
 	}
 
 	@RequestMapping(value = BASE_MAPPING, method = RequestMethod.GET, produces = {
@@ -288,34 +292,40 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 			links.add(linkBuilder.withRel(propertyMapping.getRel()));
 		}
 
-		return ControllerUtils.toResponseEntity(null, new Resource<Object>(EMPTY_RESOURCE_LIST, links), HttpStatus.OK);
+		return ControllerUtils.toResponseEntity(HttpStatus.OK, null, new Resource<Object>(EMPTY_RESOURCE_LIST, links));
 	}
 
-	@RequestMapping(value = BASE_MAPPING, method = { RequestMethod.POST, RequestMethod.PUT }, consumes = {
-			"application/json", "application/x-spring-data-compact+json", "text/uri-list" })
+	@RequestMapping(value = BASE_MAPPING, //
+			method = { RequestMethod.POST, RequestMethod.PUT }, //
+			consumes = { "application/json", "application/x-spring-data-compact+json", "text/uri-list" })
 	@ResponseBody
 	public ResponseEntity<? extends ResourceSupport> createPropertyReference(final RepositoryRestRequest repoRequest,
-			final @RequestBody Resource<Object> incoming, @PathVariable String id, @PathVariable String property)
-			throws NoSuchMethodException {
+			final @RequestBody Resources<Object> incoming, @PathVariable String id, @PathVariable String property,
+			final UriComponentsBuilder builder) throws NoSuchMethodException {
 
 		final RepositoryInvoker invoker = repoRequest.getRepositoryInvoker();
 
 		if (!invoker.exposesSave()) {
 			return new ResponseEntity<Resource<?>>(HttpStatus.METHOD_NOT_ALLOWED);
 		}
+
 		Function<ReferencedProperty, ResourceSupport> handler = new Function<ReferencedProperty, ResourceSupport>() {
 
 			@Override
 			public ResourceSupport apply(ReferencedProperty prop) {
 
+				Class<?> propertyType = prop.property.getType();
+
 				if (prop.property.isCollectionLike()) {
 
-					Collection<Object> coll = new ArrayList<Object>();
+					Collection<Object> coll = CollectionFactory.createCollection(propertyType, 0);
 
+					// Either load the exist collection to add to it (POST)
 					if (HttpMethod.POST.equals(repoRequest.getRequestMethod())) {
-						coll.addAll((Collection<Object>) prop.propertyValue);
+						coll = (Collection<Object>) prop.propertyValue;
 					}
 
+					// Add to the existing collection
 					for (Link l : incoming.getLinks()) {
 						Object propVal = loadPropertyValue(prop.propertyType, l.getHref());
 						coll.add(propVal);
@@ -325,12 +335,14 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 
 				} else if (prop.property.isMap()) {
 
-					Map<String, Object> m = new HashMap<String, Object>();
+					Map<String, Object> m = CollectionFactory.createMap(propertyType, 0);
 
+					// Either load the exist collection to add to it (POST)
 					if (HttpMethod.POST.equals(repoRequest.getRequestMethod())) {
-						m.putAll((Map<String, Object>) prop.propertyValue);
+						m = (Map<String, Object>) prop.propertyValue;
 					}
 
+					// Add to the existing collection
 					for (Link l : incoming.getLinks()) {
 						Object propVal = loadPropertyValue(prop.propertyType, l.getHref());
 						m.put(l.getRel(), propVal);
@@ -364,7 +376,10 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 
 		doWithReferencedProperty(repoRequest, id, property, handler);
 
-		return ControllerUtils.toResponseEntity(null, EMPTY_RESOURCE, HttpStatus.CREATED);
+		HttpHeaders headers = new HttpHeaders();
+		headers.set("Location", builder.build().toUriString());
+
+		return ControllerUtils.toEmptyResponse(HttpStatus.CREATED, headers);
 	}
 
 	@RequestMapping(value = BASE_MAPPING + "/{propertyId}", method = RequestMethod.DELETE)
@@ -389,25 +404,27 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 				}
 
 				if (prop.property.isCollectionLike()) {
-					Collection<Object> coll = new ArrayList<Object>();
-					for (Object obj : (Collection<Object>) prop.propertyValue) {
+					Collection<Object> coll = (Collection<Object>) prop.propertyValue;
+					Iterator<Object> itr = coll.iterator();
+					while (itr.hasNext()) {
+						Object obj = itr.next();
 						BeanWrapper<?, Object> propValWrapper = BeanWrapper.create(obj, null);
 						String s = propValWrapper.getProperty(prop.entity.getIdProperty()).toString();
-						if (!propertyId.equals(s)) {
-							coll.add(obj);
+						if (propertyId.equals(s)) {
+							itr.remove();
 						}
 					}
-					prop.wrapper.setProperty(prop.property, coll);
 				} else if (prop.property.isMap()) {
-					Map<Object, Object> m = new HashMap<Object, Object>();
-					for (Map.Entry<Object, Object> entry : ((Map<Object, Object>) prop.propertyValue).entrySet()) {
-						BeanWrapper<?, Object> propValWrapper = BeanWrapper.create(entry.getValue(), null);
+					Map<Object, Object> m = (Map<Object, Object>) prop.propertyValue;
+					Iterator<Object> itr = m.keySet().iterator();
+					while (itr.hasNext()) {
+						Object key = itr.next();
+						BeanWrapper<?, Object> propValWrapper = BeanWrapper.create(m.get(key), null);
 						String s = propValWrapper.getProperty(prop.entity.getIdProperty()).toString();
-						if (!propertyId.equals(s)) {
-							m.put(entry.getKey(), entry.getValue());
+						if (propertyId.equals(s)) {
+							itr.remove();
 						}
 					}
-					prop.wrapper.setProperty(prop.property, m);
 				} else {
 					prop.wrapper.setProperty(prop.property, null);
 				}
@@ -422,7 +439,7 @@ public class RepositoryPropertyReferenceController extends AbstractRepositoryRes
 
 		doWithReferencedProperty(repoRequest, id, property, handler);
 
-		return ControllerUtils.toResponseEntity(null, EMPTY_RESOURCE, HttpStatus.NO_CONTENT);
+		return ControllerUtils.toEmptyResponse(HttpStatus.NO_CONTENT);
 	}
 
 	private Object loadPropertyValue(Class<?> type, String href) {

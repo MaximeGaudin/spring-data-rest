@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2013-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,15 @@
  */
 package org.springframework.data.rest.webmvc.jpa;
 
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 
@@ -38,16 +40,23 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriTemplate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jayway.jsonpath.JsonPath;
 
 /**
  * Web integration tests specific to JPA.
  * 
  * @author Oliver Gierke
+ * @author Greg Turnquist
  */
 @Transactional
 @ContextConfiguration(classes = JpaRepositoryConfig.class)
 public class JpaWebTests extends AbstractWebIntegrationTests {
 
+	private static final MediaType TEXT_URI_LIST = MediaType.valueOf("text/uri-list");
 	static final String LINK_TO_SIBLINGS_OF = "$._embedded..[?(@.firstName == '%s')]._links.siblings.href[0]";
 
 	@Autowired TestDataPopulator loader;
@@ -183,16 +192,177 @@ public class JpaWebTests extends AbstractWebIntegrationTests {
 		mvc.perform(get(href)).andExpect(status().isOk());
 	}
 
-	private String readFile(String name) throws Exception {
+	/**
+	 * @see DATAREST-219
+	 */
+	@Test
+	public void manipulatePropertyCollectionRestfullyWithMultiplePosts() throws Exception {
 
-		ClassPathResource file = new ClassPathResource(name, getClass());
+		List<Link> links = preparePersonResources(new Person("Frodo", "Baggins"), //
+				new Person("Bilbo", "Baggins"), //
+				new Person("Merry", "Baggins"), //
+				new Person("Pippin", "Baggins"));
+
+		Link frodosSiblingLink = links.get(0);
+
+		postAndGet(frodosSiblingLink, links.get(1).getHref(), TEXT_URI_LIST);
+		postAndGet(frodosSiblingLink, links.get(2).getHref(), TEXT_URI_LIST);
+		postAndGet(frodosSiblingLink, links.get(3).getHref(), TEXT_URI_LIST);
+
+		assertSiblingNames(frodosSiblingLink, "Bilbo", "Merry", "Pippin");
+	}
+
+	/**
+	 * @see DATAREST-219
+	 */
+	@Test
+	public void manipulatePropertyCollectionRestfullyWithSinglePost() throws Exception {
+
+		List<Link> links = preparePersonResources(new Person("Frodo", "Baggins"), //
+				new Person("Bilbo", "Baggins"), //
+				new Person("Merry", "Baggins"), //
+				new Person("Pippin", "Baggins"));
+
+		Link frodosSiblingLink = links.get(0);
+
+		postAndGet(frodosSiblingLink, toUriList(links.get(1), links.get(2), links.get(3)), TEXT_URI_LIST);
+
+		assertSiblingNames(frodosSiblingLink, "Bilbo", "Merry", "Pippin");
+	}
+
+	/**
+	 * @see DATAREST-219
+	 */
+	@Test
+	public void manipulatePropertyCollectionRestfullyWithMultiplePuts() throws Exception {
+
+		List<Link> links = preparePersonResources(new Person("Frodo", "Baggins"), //
+				new Person("Bilbo", "Baggins"), //
+				new Person("Merry", "Baggins"), //
+				new Person("Pippin", "Baggins"));
+
+		Link frodosSiblingsLink = links.get(0);
+
+		putAndGet(frodosSiblingsLink, links.get(1).getHref(), TEXT_URI_LIST);
+		putAndGet(frodosSiblingsLink, links.get(2).getHref(), TEXT_URI_LIST);
+		putAndGet(frodosSiblingsLink, links.get(3).getHref(), TEXT_URI_LIST);
+		assertSiblingNames(frodosSiblingsLink, "Pippin");
+
+		postAndGet(frodosSiblingsLink, links.get(2).getHref(), TEXT_URI_LIST);
+		assertSiblingNames(frodosSiblingsLink, "Merry", "Pippin");
+	}
+
+	/**
+	 * @see DATAREST-219
+	 */
+	@Test
+	public void manipulatePropertyCollectionRestfullyWithSinglePut() throws Exception {
+
+		List<Link> links = preparePersonResources(new Person("Frodo", "Baggins"), //
+				new Person("Bilbo", "Baggins"), //
+				new Person("Merry", "Baggins"), //
+				new Person("Pippin", "Baggins"));
+
+		Link frodoSiblingLink = links.get(0);
+
+		putAndGet(frodoSiblingLink, toUriList(links.get(1), links.get(2), (links.get(3))), TEXT_URI_LIST);
+		assertSiblingNames(frodoSiblingLink, "Bilbo", "Merry", "Pippin");
+
+		putAndGet(frodoSiblingLink, toUriList(links.get(3)), TEXT_URI_LIST);
+		assertSiblingNames(frodoSiblingLink, "Pippin");
+
+		postAndGet(frodoSiblingLink, toUriList(links.get(2)), TEXT_URI_LIST);
+		assertSiblingNames(frodoSiblingLink, "Merry", "Pippin");
+	}
+
+	/**
+	 * @see DATAREST-219
+	 */
+	@Test
+	public void manipulatePropertyCollectionRestfullyWithDelete() throws Exception {
+
+		List<Link> links = preparePersonResources(new Person("Frodo", "Baggins"), //
+				new Person("Bilbo", "Baggins"), //
+				new Person("Merry", "Baggins"), //
+				new Person("Pippin", "Baggins"));
+
+		Link frodosSiblingsLink = links.get(0);
+
+		postAndGet(frodosSiblingsLink, links.get(1).getHref(), TEXT_URI_LIST);
+		postAndGet(frodosSiblingsLink, links.get(2).getHref(), TEXT_URI_LIST);
+		postAndGet(frodosSiblingsLink, links.get(3).getHref(), TEXT_URI_LIST);
+
+		String pippinId = new UriTemplate("/people/{id}").match(links.get(3).getHref()).get("id");
+		deleteAndGet(new Link(frodosSiblingsLink.getHref() + "/" + pippinId), TEXT_URI_LIST);
+
+		assertSiblingNames(frodosSiblingsLink, "Bilbo", "Merry");
+	}
+
+	private List<Link> preparePersonResources(Person primary, Person... persons) throws Exception {
+
+		Link peopleLink = discoverUnique("people");
+		ObjectMapper mapper = new ObjectMapper();
+		List<Link> links = new ArrayList<Link>();
+
+		MockHttpServletResponse primaryResponse = postAndGet(peopleLink, mapper.writeValueAsString(primary),
+				MediaType.APPLICATION_JSON);
+		links.add(assertHasLinkWithRel("siblings", primaryResponse));
+
+		for (Person person : persons) {
+
+			String payload = mapper.writeValueAsString(person);
+			MockHttpServletResponse response = postAndGet(peopleLink, payload, MediaType.APPLICATION_JSON);
+
+			links.add(assertHasLinkWithRel(Link.REL_SELF, response));
+		}
+
+		return links;
+	}
+
+	/**
+	 * Asserts the {@link Person} resource the given link points to contains siblings with the given names.
+	 * 
+	 * @param link
+	 * @param siblingNames
+	 * @throws Exception
+	 */
+	private void assertSiblingNames(Link link, String... siblingNames) throws Exception {
+
+		String responseBody = request(link).getContentAsString();
+		List<String> persons = JsonPath.read(responseBody, "$._embedded.persons[*].firstName");
+
+		assertThat(persons, hasSize(siblingNames.length));
+		assertThat(persons, hasItems(siblingNames));
+	}
+
+	private static String readFile(String name) throws Exception {
+
+		ClassPathResource file = new ClassPathResource(name, JpaWebTests.class);
 		StringBuilder builder = new StringBuilder();
+
 		Scanner scanner = new Scanner(file.getFile(), "UTF-8");
 
-		while (scanner.hasNextLine()) {
-			builder.append(scanner.nextLine());
+		try {
+
+			while (scanner.hasNextLine()) {
+				builder.append(scanner.nextLine());
+			}
+
+		} finally {
+			scanner.close();
 		}
 
 		return builder.toString();
+	}
+
+	private static String toUriList(Link... links) {
+
+		List<String> uris = new ArrayList<String>(links.length);
+
+		for (Link link : links) {
+			uris.add(link.expand().getHref());
+		}
+
+		return StringUtils.collectionToDelimitedString(uris, "\n");
 	}
 }

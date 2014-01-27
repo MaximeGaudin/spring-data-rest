@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2013-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
 import org.springframework.web.context.WebApplicationContext;
 
 import com.jayway.jsonpath.InvalidPathException;
@@ -57,6 +58,7 @@ import com.jayway.jsonpath.JsonPath;
 
 /**
  * @author Oliver Gierke
+ * @author Greg Turnquist
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @WebAppConfiguration
@@ -87,7 +89,7 @@ public abstract class AbstractWebIntegrationTests {
 	}
 
 	protected MockHttpServletResponse request(Link link) throws Exception {
-		return request(link.getHref());
+		return request(link.expand().getHref());
 	}
 
 	protected MockHttpServletResponse request(String href) throws Exception {
@@ -95,7 +97,7 @@ public abstract class AbstractWebIntegrationTests {
 	}
 
 	protected ResultActions follow(Link link) throws Exception {
-		return follow(link.getHref());
+		return follow(link.expand().getHref());
 	}
 
 	protected ResultActions follow(String href) throws Exception {
@@ -132,6 +134,59 @@ public abstract class AbstractWebIntegrationTests {
 				andReturn().getResponse();
 
 		return assertHasLinkWithRel(rel, response);
+	}
+
+	protected MockHttpServletResponse postAndGet(Link link, Object payload, MediaType mediaType) throws Exception {
+
+		String href = link.isTemplated() ? link.expand().getHref() : link.getHref();
+
+		MockHttpServletResponse response = mvc.perform(post(href).content(payload.toString()).contentType(mediaType)).//
+				andExpect(status().isCreated()).//
+				andExpect(header().string("Location", is(notNullValue()))).//
+				andReturn().getResponse();
+
+		String content = response.getContentAsString();
+
+		if (StringUtils.hasText(content)) {
+			return response;
+		}
+
+		return request(response.getHeader("Location"));
+	}
+
+	protected MockHttpServletResponse putAndGet(Link link, Object payload, MediaType mediaType) throws Exception {
+
+		String href = link.isTemplated() ? link.expand().getHref() : link.getHref();
+
+		MockHttpServletResponse response = mvc.perform(put(href).content(payload.toString()).contentType(mediaType)).//
+				andExpect(status().isCreated()).//
+				andExpect(header().string("Location", is(notNullValue()))).//
+				andReturn().getResponse();
+
+		String content = response.getContentAsString();
+
+		if (StringUtils.hasText(content)) {
+			return response;
+		}
+
+		return request(response.getHeader("Location"));
+	}
+
+	protected MockHttpServletResponse deleteAndGet(Link link, MediaType mediaType) throws Exception {
+
+		String href = link.isTemplated() ? link.expand().getHref() : link.getHref();
+
+		MockHttpServletResponse response = mvc.perform(delete(href).contentType(mediaType)).//
+				andExpect(status().isNoContent()).//
+				andReturn().getResponse();
+
+		String content = response.getContentAsString();
+
+		if (StringUtils.hasText(content)) {
+			return response;
+		}
+
+		return request(response.getHeader("Location"));
 	}
 
 	protected Link assertHasLinkWithRel(String rel, MockHttpServletResponse response) throws Exception {
@@ -264,7 +319,7 @@ public abstract class AbstractWebIntegrationTests {
 			request(link);
 
 			// Schema - TODO:Improve by using hypermedia
-			mvc.perform(get(link.getHref() + "/schema").//
+			mvc.perform(get(link.expand().getHref() + "/schema").//
 					accept(MediaType.parseMediaType("application/schema+json"))).//
 					andExpect(status().isOk());
 		}
@@ -313,7 +368,7 @@ public abstract class AbstractWebIntegrationTests {
 	}
 
 	@Test
-	public void postsPayloadToResource() throws Exception {
+	public void nic() throws Exception {
 
 		Map<String, String> payloads = getPayloadToPost();
 		assumeFalse(payloads.isEmpty());
@@ -325,9 +380,11 @@ public abstract class AbstractWebIntegrationTests {
 			String payload = payloads.get(rel);
 
 			if (payload != null) {
-				Link link = assertHasLinkWithRel(rel, response);
 
-				MockHttpServletRequestBuilder request = post(link.getHref()).//
+				Link link = assertHasLinkWithRel(rel, response);
+				String target = link.expand().getHref();
+
+				MockHttpServletRequestBuilder request = post(target).//
 						content(payload).//
 						contentType(MediaType.APPLICATION_JSON);
 

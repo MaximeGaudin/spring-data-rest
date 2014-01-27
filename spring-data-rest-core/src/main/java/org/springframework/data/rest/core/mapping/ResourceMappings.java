@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2013-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import org.springframework.data.mapping.PersistentProperty;
 import org.springframework.data.repository.core.RepositoryInformation;
 import org.springframework.data.repository.support.Repositories;
 import org.springframework.data.rest.core.Path;
+import org.springframework.data.rest.core.annotation.Description;
 import org.springframework.data.rest.core.annotation.RestResource;
 import org.springframework.data.rest.core.config.RepositoryRestConfiguration;
 import org.springframework.data.rest.core.support.RepositoriesUtils;
@@ -98,7 +99,7 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 			RepositoryInformation repositoryInformation = repositories.getRepositoryInformationFor(type);
 			Class<?> repositoryInterface = repositoryInformation.getRepositoryInterface();
 
-			CollectionResourceMapping mapping = new RepositoryCollectionResourceMapping(repositoryInterface, relProvider);
+			CollectionResourceMapping mapping = new RepositoryCollectionResourceMapping(repositoryInformation, relProvider);
 
 			RepositoryAwareResourceInformation information = new RepositoryAwareResourceInformation(repositories, mapping,
 					this, repositoryInformation);
@@ -137,8 +138,8 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 
 		if (resourceMapping.isExported()) {
 			for (Method queryMethod : repositoryInformation.getQueryMethods()) {
-				RepositoryMethodResourceMapping methodMapping = new RepositoryMethodResourceMapping(
-						queryMethod, resourceMapping);
+				RepositoryMethodResourceMapping methodMapping = new RepositoryMethodResourceMapping(queryMethod,
+						resourceMapping);
 				if (methodMapping.isExported()) {
 					mappings.add(methodMapping);
 				}
@@ -222,7 +223,8 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 		}
 
 		ResourceMetadata propertyTypeMapping = getMappingFor(property.getActualType());
-		propertyMapping = new PersistentPropertyResourceMapping(property, propertyTypeMapping);
+		ResourceMetadata ownerTypeMapping = getMappingFor(property.getOwner().getType());
+		propertyMapping = new PersistentPropertyResourceMapping(property, propertyTypeMapping, ownerTypeMapping);
 
 		propertyCache.put(property, propertyMapping);
 
@@ -257,7 +259,9 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 
 		private final PersistentProperty<?> property;
 		private final ResourceMapping typeMapping;
+		private final CollectionResourceMapping ownerTypeMapping;
 		private final RestResource annotation;
+		private final Description description;
 
 		/**
 		 * Creates a new {@link PersistentPropertyResourceMapping}.
@@ -265,12 +269,16 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 		 * @param property must not be {@literal null}.
 		 * @param exported whether the property is exported or not.
 		 */
-		public PersistentPropertyResourceMapping(PersistentProperty<?> property, ResourceMapping typeMapping) {
+		public PersistentPropertyResourceMapping(PersistentProperty<?> property, ResourceMapping typeMapping,
+				CollectionResourceMapping ownerTypeMapping) {
 
 			Assert.notNull(property, "PersistentProperty must not be null!");
+
 			this.property = property;
 			this.typeMapping = typeMapping;
-			this.annotation = property.findAnnotation(RestResource.class);
+			this.ownerTypeMapping = ownerTypeMapping;
+			this.annotation = property.isAssociation() ? property.findAnnotation(RestResource.class) : null;
+			this.description = property.findAnnotation(Description.class);
 		}
 
 		/* 
@@ -297,13 +305,43 @@ public class ResourceMappings implements Iterable<ResourceMetadata> {
 		 * @see org.springframework.data.rest.core.mapping.ResourceMapping#isExported()
 		 */
 		@Override
-		public Boolean isExported() {
+		public boolean isExported() {
 
 			if (typeMapping == null) {
 				return false;
 			}
 
 			return !typeMapping.isExported() ? false : annotation == null ? true : annotation.exported();
+		}
+
+		/* 
+		 * (non-Javadoc)
+		 * @see org.springframework.data.rest.core.mapping.ResourceMapping#isPagingResource()
+		 */
+		@Override
+		public boolean isPagingResource() {
+			return false;
+		}
+
+		/* 
+		 * (non-Javadoc)
+		 * @see org.springframework.data.rest.core.mapping.ResourceMapping#getDescription()
+		 */
+		@Override
+		public ResourceDescription getDescription() {
+
+			ResourceDescription fallback = SimpleResourceDescription.defaultFor(property,
+					ownerTypeMapping.getItemResourceRel());
+
+			if (description != null) {
+				return new AnnotationBasedResourceDescription(description, fallback);
+			}
+
+			if (annotation != null) {
+				return new AnnotationBasedResourceDescription(annotation.description(), fallback);
+			}
+
+			return fallback;
 		}
 	}
 }

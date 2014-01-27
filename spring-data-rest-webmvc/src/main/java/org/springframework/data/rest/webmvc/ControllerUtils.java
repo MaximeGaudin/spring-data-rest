@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2013-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,17 +27,26 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * @author Oliver Gierke
+ * @author Greg Turnquist
  */
 public class ControllerUtils {
 
-	public static final Resource<?> EMPTY_RESOURCE = new Resource<Object>(new Object());
 	public static final Resources<Resource<?>> EMPTY_RESOURCES = new Resources<Resource<?>>(
 			Collections.<Resource<?>> emptyList());
 	public static final Iterable<Resource<?>> EMPTY_RESOURCE_LIST = Collections.emptyList();
 	public static final TypeDescriptor STRING_TYPE = TypeDescriptor.valueOf(String.class);
 
-	public static <R extends ResourceSupport> ResponseEntity<ResourceSupport> toResponseEntity(HttpHeaders headers,
-			R resource, HttpStatus status) {
+	/**
+	 * Wrap a resource as a {@link ResourceEntity} and attach given headers and status.
+	 * 
+	 * @param status
+	 * @param headers
+	 * @param resource
+	 * @param <R>
+	 * @return
+	 */
+	public static <R extends ResourceSupport> ResponseEntity<ResourceSupport> toResponseEntity(HttpStatus status,
+			HttpHeaders headers, R resource) {
 
 		HttpHeaders hdrs = new HttpHeaders();
 		if (null != headers) {
@@ -45,5 +54,26 @@ public class ControllerUtils {
 		}
 
 		return new ResponseEntity<ResourceSupport>(resource, hdrs, status);
+	}
+
+	/**
+	 * Return an empty response that is only comprised of a status
+	 * 
+	 * @param status
+	 * @return
+	 */
+	public static ResponseEntity<ResourceSupport> toEmptyResponse(HttpStatus status) {
+		return toResponseEntity(status, null, EMPTY_RESOURCES);
+	}
+
+	/**
+	 * Return an empty response that is only comprised of headers and a status
+	 * 
+	 * @param status
+	 * @param headers
+	 * @return
+	 */
+	public static ResponseEntity<ResourceSupport> toEmptyResponse(HttpStatus status, HttpHeaders headers) {
+		return toResponseEntity(status, headers, EMPTY_RESOURCES);
 	}
 }
