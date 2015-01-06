@@ -125,7 +125,21 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
             BeanWrapper<?, Object> wrapper = BeanWrapper.create(entity, conversionService);
             ResourceMetadata metadata = mappings.getMappingFor(handledType());
 
+            Boolean previousIgnored = false;
+
             for (JsonToken tok = jp.nextToken(); tok != JsonToken.END_OBJECT; tok = jp.nextToken()) {
+                if (previousIgnored == true && tok == JsonToken.START_OBJECT) {
+                    while (jp.nextToken() != JsonToken.END_OBJECT) {}
+
+                    tok = jp.nextToken();
+                }
+
+                if (previousIgnored == true && tok == JsonToken.START_ARRAY) {
+                    while (jp.nextToken() != JsonToken.END_ARRAY) {}
+
+                    tok = jp.nextToken();
+                }
+
                 String name = jp.getCurrentName();
                 switch (tok) {
                     case FIELD_NAME: {
@@ -146,6 +160,7 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
 
                         PersistentProperty<?> persistentProperty = persistentEntity.getPersistentProperty(name);
                         if (null == persistentProperty) {
+                            previousIgnored = true;
                             continue;
                         }
 
@@ -166,7 +181,7 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
                         }
 
                         if (null == persistentProperty) {
-                            // do nothing
+                            previousIgnored = true;
                             continue;
                         }
 
@@ -222,6 +237,8 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
                         break;
                     }
                 }
+
+                previousIgnored = false;
             }
 
             return (T) entity;
