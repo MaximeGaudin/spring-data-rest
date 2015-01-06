@@ -25,7 +25,7 @@
     </distributionManagement>
 
     <scm>
-        <developerConnection>scm:git@github.com:MaximeGaudin/spring-data-rest.git</developerConnection>
+        <developerConnection>scm:git:https://github.com/MaximeGaudin/spring-data-rest.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
 
