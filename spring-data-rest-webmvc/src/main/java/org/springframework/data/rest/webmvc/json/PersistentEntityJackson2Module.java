@@ -166,19 +166,23 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
 
                         Object val = null;
 
-                        if ("links".equals(name)) {
-                            if ((tok = jp.nextToken()) == JsonToken.START_ARRAY) {
-                                while ((tok = jp.nextToken()) != JsonToken.END_ARRAY) {
-                                    // Advance past the links
-                                }
-                            } else if (tok == JsonToken.VALUE_NULL) {
-                                // skip null value
-                            } else {
-                                throw new HttpMessageNotReadableException(
-                                        "Property 'links' is not of array type. Either eliminate this property from the document or make it an array.");
-                            }
-                            continue;
-                        }
+                        /*
+                         * This functionality was unused and forbid us to use
+                         * field named "links" which was problematic for Recipe+5.0
+                         */
+//                        if ("links".equals(name)) {
+//                            if ((tok = jp.nextToken()) == JsonToken.START_ARRAY) {
+//                                while ((tok = jp.nextToken()) != JsonToken.END_ARRAY) {
+//                                    // Advance past the links
+//                                }
+//                            } else if (tok == JsonToken.VALUE_NULL) {
+//                                // skip null value
+//                            } else {
+//                                throw new HttpMessageNotReadableException(
+//                                        "Property 'links' is not of array type. Either eliminate this property from the document or make it an array.");
+//                            }
+//                            continue;
+//                        }
 
                         if (null == persistentProperty) {
                             previousIgnored = true;
