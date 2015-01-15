@@ -102,18 +102,6 @@ class AbstractRepositoryRestController implements MessageSourceAware, Initializi
 		return errorResponse(npe, HttpStatus.INTERNAL_SERVER_ERROR);
 	}
 
-	@ExceptionHandler({ ResourceNotFoundException.class })
-	@ResponseBody
-	public ResponseEntity<?> handleNotFound() {
-		return notFound();
-	}
-
-	@ExceptionHandler({ NoSuchMethodError.class, HttpRequestMethodNotSupportedException.class })
-	@ResponseBody
-	public ResponseEntity<?> handleNoSuchMethod() {
-		return errorResponse(null, HttpStatus.METHOD_NOT_ALLOWED);
-	}
-
 	@ExceptionHandler({ HttpMessageNotReadableException.class, HttpMessageNotWritableException.class })
 	@ResponseBody
 	public ResponseEntity<ExceptionMessage> handleNotReadable(HttpMessageNotReadableException e) {
@@ -136,26 +124,6 @@ class AbstractRepositoryRestController implements MessageSourceAware, Initializi
 		return badRequest(t);
 	}
 
-	@ExceptionHandler({ RepositoryConstraintViolationException.class })
-	@ResponseBody
-	public ResponseEntity handleRepositoryConstraintViolationException(Locale locale,
-			RepositoryConstraintViolationException rcve) {
-
-		return response(null, new RepositoryConstraintViolationExceptionMessage(rcve, messageSource, locale),
-				HttpStatus.BAD_REQUEST);
-	}
-
-	/**
-	 * Send a 409 Conflict in case of concurrent modification.
-	 * 
-	 * @param ex
-	 * @return
-	 */
-	@ExceptionHandler({ OptimisticLockingFailureException.class, DataIntegrityViolationException.class })
-	@ResponseBody
-	public ResponseEntity handleConflict(Exception ex) {
-		return errorResponse(null, ex, HttpStatus.CONFLICT);
-	}
 
 	protected <T> ResponseEntity<T> notFound() {
 		return notFound(null, null);
