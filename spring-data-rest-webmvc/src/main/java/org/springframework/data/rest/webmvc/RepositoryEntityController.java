@@ -234,7 +234,7 @@ class RepositoryEntityController extends AbstractRepositoryRestController implem
 		domainObjectMerger.merge(incoming.getContent(), domainObj);
 
 		publisher.publishEvent(new BeforeSaveEvent(incoming.getContent()));
-		Object obj = invoker.invokeSave(domainObj);
+		Object obj = invoker.invokeSave(incoming.getContent());
 		publisher.publishEvent(new AfterSaveEvent(obj));
 
 		if (config.isReturnBodyOnUpdate()) {
