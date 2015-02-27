@@ -125,19 +125,21 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
             BeanWrapper<?, Object> wrapper = BeanWrapper.create(entity, conversionService);
             ResourceMetadata metadata = mappings.getMappingFor(handledType());
 
-            Boolean previousIgnored = false;
+            Boolean unmapped = false;
+            Integer objectDepth = 0;
 
-            for (JsonToken tok = jp.nextToken(); tok != JsonToken.END_OBJECT; tok = jp.nextToken()) {
-                if (previousIgnored == true && tok == JsonToken.START_OBJECT) {
-                    while (jp.nextToken() != JsonToken.END_OBJECT) {}
+            for (JsonToken tok = jp.nextToken(); tok != JsonToken.END_OBJECT || unmapped; tok = jp.nextToken()) {
+                if (unmapped) {
+                    if (tok == JsonToken.START_OBJECT || tok == JsonToken.START_ARRAY) {
+                        objectDepth += 1;
+                    }
 
-                    tok = jp.nextToken();
-                }
+                    if (tok == JsonToken.END_OBJECT || tok == JsonToken.END_ARRAY) {
+                        objectDepth -= 1;
+                    }
 
-                if (previousIgnored == true && tok == JsonToken.START_ARRAY) {
-                    while (jp.nextToken() != JsonToken.END_ARRAY) {}
-
-                    tok = jp.nextToken();
+                    unmapped = (objectDepth != 0);
+                    continue;
                 }
 
                 String name = jp.getCurrentName();
@@ -160,34 +162,12 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
 
                         PersistentProperty<?> persistentProperty = persistentEntity.getPersistentProperty(name);
                         if (null == persistentProperty) {
-                            previousIgnored = true;
+                            unmapped = true;
+                            objectDepth = 0;
                             continue;
                         }
 
                         Object val = null;
-
-                        /*
-                         * This functionality was unused and forbid us to use
-                         * field named "links" which was problematic for Recipe+5.0
-                         */
-//                        if ("links".equals(name)) {
-//                            if ((tok = jp.nextToken()) == JsonToken.START_ARRAY) {
-//                                while ((tok = jp.nextToken()) != JsonToken.END_ARRAY) {
-//                                    // Advance past the links
-//                                }
-//                            } else if (tok == JsonToken.VALUE_NULL) {
-//                                // skip null value
-//                            } else {
-//                                throw new HttpMessageNotReadableException(
-//                                        "Property 'links' is not of array type. Either eliminate this property from the document or make it an array.");
-//                            }
-//                            continue;
-//                        }
-
-                        if (null == persistentProperty) {
-                            previousIgnored = true;
-                            continue;
-                        }
 
                         // Try and read the value of this attribute.
                         // The method of doing that varies based on the type of the property.
@@ -241,8 +221,6 @@ public class PersistentEntityJackson2Module extends SimpleModule implements Init
                         break;
                     }
                 }
-
-                previousIgnored = false;
             }
 
             return (T) entity;
